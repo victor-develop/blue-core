@@ -2,24 +2,24 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-Local CLI-backed multi-agent runtime for building Web agent apps on top of `codex` and `claude`.
+Blue Core 是一个基于本地 `codex` 和 `claude` CLI 的多智能体运行时，用来快速构建 Web 形态的 agent app。
 
-It gives you:
+它当前提供：
 
-- logical local-agent sessions
-- SSE room streams
-- room-based agent-to-agent communication
-- LangGraph autoplay orchestration
-- template-driven app bootstrapping
+- 逻辑化的本地 agent session
+- 基于 SSE 的房间消息流
+- 房间内 agent-to-agent 通信
+- 基于 LangGraph 的自动轮次编排
+- 基于模板的快速启动能力
 
-## Documentation
+## 文档索引
 
 - [README (English)](./README.md)
 - [README（简体中文）](./README.zh-CN.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [架构说明](./docs/ARCHITECTURE.zh-CN.md)
 
-## Install
+## 安装
 
 ```bash
 npm install
@@ -27,24 +27,24 @@ npm run build:web
 npm start
 ```
 
-Open [http://localhost:3789](http://localhost:3789).
+启动后访问 [http://localhost:3789](http://localhost:3789)。
 
-## Repo Layout
+## 仓库结构
 
 - `lib/framework/blue-core-app.js`
-  - reusable core runtime
+  - 可复用的核心 runtime
 - `lib/framework/index.js`
-  - public framework entrypoint
+  - 对外导出的 framework 入口
 - `lib/cli-adapters.js`
-  - non-interactive local CLI adapters for `codex` and `claude`
+  - `codex` / `claude` 的非交互式本地 CLI 适配层
 - `lib/langgraph-room-runner.mjs`
-  - LangGraph turn runner
+  - LangGraph 的单轮执行器
 - `server.js`
-  - minimal demo shell
+  - 最小 demo server
 - `web/`
-  - React + Vite demo client
+  - React + Vite 的演示前端
 - `examples/`
-  - minimal and custom-template examples
+  - 最小示例和自定义模板示例
 
 ## Public API
 
@@ -58,7 +58,7 @@ const { server } = createBlueCoreApp({
 server.listen(3789);
 ```
 
-`createBlueCoreApp()` currently accepts:
+`createBlueCoreApp()` 当前支持这些主要参数：
 
 - `rootDir`
 - `defaultCwd`
@@ -67,23 +67,23 @@ server.listen(3789);
 - `templates`
 - `invokeAgent`
 
-## Templates
+## 模板机制
 
-Templates are the main extension point. Each template object supports:
+模板是当前最主要的扩展点。每个模板对象支持：
 
 - `id`
 - `title`
 - `description`
 - `build(workspaceRoot)`
 
-`build()` returns:
+`build()` 需要返回：
 
 - `sessions`
 - `roomTitle`
 - `instruction`
 - `seedMessage`
 
-## Registered API
+## 已注册 API
 
 - `GET /api/health`
 - `GET /api/models`
@@ -103,25 +103,25 @@ Templates are the main extension point. Each template object supports:
 - `POST /api/rooms/:id/autoplay/stop`
 - `POST /api/rooms/autoplay/stop-all`
 
-## Examples
+## 示例
 
 - `examples/minimal-local-web`
-  - smallest Web app using the framework as-is
+  - 最小 Web 应用示例
 - `examples/custom-templates`
-  - shows how to append your own room templates
+  - 演示如何追加你自己的房间模板
 
-## Default Permissions
+## 默认权限
 
-Default runners are intentionally high-permission:
+默认 runner 是高权限模式：
 
 - `codex`: `--dangerously-bypass-approvals-and-sandbox`
 - `claude`: `--dangerously-skip-permissions`
 
-That is what makes the agents able to actually work inside a target directory. Use only on trusted machines and trusted workspaces.
+这样 agent 才能真正进入目标目录执行修改。只建议在可信机器和可信工作区里使用。
 
-## Notes
+## 说明
 
-- runtime state is currently in-memory
-- restart clears rooms and sessions
-- PTY and terminal streaming are intentionally not part of this runtime
-- sessions are logical agent conversations, not long-lived shell processes
+- 当前 runtime 状态仍然是内存态
+- 重启后 room 和 session 会清空
+- PTY 和 terminal streaming 已经被有意移出这个 runtime
+- 这里的 session 是逻辑会话，不是长期存活的 shell 进程
