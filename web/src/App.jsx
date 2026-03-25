@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
 
 const EMPTY_EVENTS = [];
+const EMPTY_MESSAGES = [];
 
 export default function App() {
   const [models, setModels] = useState([]);
@@ -11,19 +10,17 @@ export default function App() {
   const [templates, setTemplates] = useState([]);
   const [roomEvents, setRoomEvents] = useState(new Map());
   const [roomActivity, setRoomActivity] = useState(new Map());
-  const [terminalBuffers, setTerminalBuffers] = useState(new Map());
+  const [sessionMessages, setSessionMessages] = useState(new Map());
   const [activeModel, setActiveModel] = useState("codex");
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [activeRoomId, setActiveRoomId] = useState(null);
   const [selectedSessionIds, setSelectedSessionIds] = useState([]);
   const [defaultCwd, setDefaultCwd] = useState("");
-  const [terminalOpen, setTerminalOpen] = useState(false);
   const [composerValue, setComposerValue] = useState("");
   const [launchForm, setLaunchForm] = useState({ cwd: "", title: "", persona: "" });
   const [roomForm, setRoomForm] = useState({ title: "", instruction: "" });
   const [status, setStatus] = useState("Ready.");
 
-  const socketRef = useRef(null);
   const roomsRef = useRef([]);
 
   const activeRoom = useMemo(
@@ -35,7 +32,7 @@ export default function App() {
     [sessions, activeSessionId],
   );
   const activeEvents = activeRoom ? roomEvents.get(activeRoom.id) || EMPTY_EVENTS : EMPTY_EVENTS;
-  const activeTerminalBuffer = activeSession ? terminalBuffers.get(activeSession.id) || "" : "";
+  const activeMessages = activeSession ? sessionMessages.get(activeSession.id) || EMPTY_MESSAGES : EMPTY_MESSAGES;
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -73,6 +70,8 @@ export default function App() {
       setTemplates(nextTemplates);
       if (nextRooms[0]) {
         setActiveRoomId(nextRooms[0].id);
+      } else if (nextSessions[0]) {
+        setActiveSessionId(nextSessions[0].id);
       }
     }
 
@@ -81,65 +80,6 @@ export default function App() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${protocol}://${window.location.host}`);
-    socketRef.current = socket;
-
-    socket.addEventListener("open", () => {
-      if (activeSessionId) {
-        socket.send(JSON.stringify({ type: "subscribe", sessionId: activeSessionId }));
-      }
-    });
-
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data);
-
-      if (message.type === "sessions") {
-        setSessions(message.sessions);
-        return;
-      }
-
-      if (message.type === "rooms") {
-        setRooms(message.rooms);
-        return;
-      }
-
-      if (message.type === "session-updated") {
-        setSessions((current) => upsertById(current, message.session));
-        return;
-      }
-
-      if (message.type === "session-snapshot") {
-        setSessions((current) => upsertById(current, message.session));
-        setTerminalBuffers((current) => {
-          const next = new Map(current);
-          next.set(message.session.id, message.buffer || "");
-          return next;
-        });
-        return;
-      }
-
-      if (message.type === "terminal-output") {
-        setTerminalBuffers((current) => {
-          const next = new Map(current);
-          next.set(message.sessionId, `${next.get(message.sessionId) || ""}${message.data}`);
-          return next;
-        });
-        return;
-      }
-
-      if (message.type === "session-error") {
-        setStatus(message.error);
-      }
-    });
-
-    return () => {
-      socket.close();
-      socketRef.current = null;
-    };
-  }, [activeSessionId]);
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
@@ -170,27 +110,35 @@ export default function App() {
         next.delete(activeRoomId);
         return next;
       });
-      setRoomEvents((current) => {
-        const next = new Map(current);
-        const existing = next.get(activeRoomId) || [];
-        next.set(activeRoomId, [...existing, payload].slice(-400));
-        return next;
-      });
+      if (payload.room) {
+        setRooms((current) => upsertById(current, payload.room));
+      }
+      if (payload.event) {
+        setRoomEvents((current) => {
+          const next = new Map(current);
+          const existing = next.get(activeRoomId) || [];
+          next.set(activeRoomId, [...existing, payload.event].slice(-400));
+          return next;
+        });
+      }
     });
     source.addEventListener("turn.started", (event) => {
       const payload = JSON.parse(event.data);
+      const room = payload.room || roomsRef.current.find((entry) => entry.id === activeRoomId);
+      const member = room?.members?.[payload.nextSpeakerIndex];
       setRoomActivity((current) => {
         const next = new Map(current);
-        const room = roomsRef.current.find((entry) => entry.id === activeRoomId);
-        const member = room?.members?.[payload.nextSpeakerIndex];
         next.set(
           activeRoomId,
           member
-            ? `${member.displayName} is working on turn ${Number(payload.turnCount || 0) + 1}.`
+            ? `${member.displayName} is taking turn ${Number(payload.turnCount || 0) + 1}.`
             : "An agent is working.",
         );
         return next;
       });
+      if (payload.room) {
+        setRooms((current) => upsertById(current, payload.room));
+      }
     });
     source.onerror = () => {
       if (!closed) setStatus("Room stream disconnected. Reloading the latest snapshot usually fixes it.");
@@ -203,9 +151,8 @@ export default function App() {
   }, [activeRoomId]);
 
   useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN || !activeSessionId) return;
-    socket.send(JSON.stringify({ type: "subscribe", sessionId: activeSessionId }));
+    if (!activeSessionId) return;
+    loadSession(activeSessionId).catch((error) => setStatus(error.message));
   }, [activeSessionId]);
 
   const roomStats = activeRoom
@@ -217,6 +164,28 @@ export default function App() {
       ]
     : [];
   const activeRoomActivity = activeRoom ? roomActivity.get(activeRoom.id) || "" : "";
+
+  async function loadSession(sessionId) {
+    const response = await fetch(`/api/sessions/${sessionId}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to load session.");
+    }
+    setSessions((current) => upsertById(current, payload.session));
+    setSessionMessages((current) => {
+      const next = new Map(current);
+      next.set(sessionId, payload.messages || []);
+      return next;
+    });
+  }
+
+  async function refreshRooms() {
+    const response = await fetch("/api/rooms");
+    const payload = await response.json();
+    if (response.ok) {
+      setRooms(payload.rooms || []);
+    }
+  }
 
   async function handleCreateSession(event) {
     event.preventDefault();
@@ -301,17 +270,28 @@ export default function App() {
         return;
       }
       setComposerValue("");
+      await refreshRooms();
       return;
     }
 
     if (activeSessionId) {
-      const socket = socketRef.current;
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "input", sessionId: activeSessionId, data: content }));
-        window.setTimeout(() => {
-          socket.send(JSON.stringify({ type: "input", sessionId: activeSessionId, data: "\r" }));
-        }, 20);
+      const response = await fetch(`/api/sessions/${activeSessionId}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setStatus(payload.error || "Unable to send message.");
+        return;
       }
+      setSessions((current) => upsertById(current, payload.session));
+      setSessionMessages((current) => {
+        const next = new Map(current);
+        const existing = next.get(activeSessionId) || [];
+        next.set(activeSessionId, [...existing, ...(payload.messages || [])]);
+        return next;
+      });
       setComposerValue("");
     }
   }
@@ -342,14 +322,6 @@ export default function App() {
     setStatus(`Stopped ${payload.stopped.length} room(s).`);
   }
 
-  function handleInterrupt() {
-    if (!activeSessionId) return;
-    const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "input", sessionId: activeSessionId, data: "\u0003" }));
-    }
-  }
-
   function toggleSessionSelection(id) {
     setSelectedSessionIds((current) =>
       current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
@@ -364,7 +336,7 @@ export default function App() {
             <p className="eyebrow">Blue Core</p>
             <h1>Agent Rooms</h1>
           </div>
-          <p className="hero-copy">React workspace for LangGraph rooms, direct terminals, and local Codex or Claude runners.</p>
+          <p className="hero-copy">Modern multi-agent workspace powered by local Codex and Claude CLIs over REST and SSE.</p>
           <div className="hero-actions">
             {templates.map((template, index) => (
               <button
@@ -491,7 +463,7 @@ export default function App() {
             <p className="stage-subtitle">
               {activeRoom?.instruction ||
                 activeSession?.persona ||
-                "Rooms stream via SSE. Session terminals stay available in the drawer."}
+                "Sessions are direct agent chats. Rooms stream multi-agent activity over SSE."}
             </p>
           </div>
           <div className="toolbar-actions">
@@ -500,9 +472,6 @@ export default function App() {
             </button>
             <button className="ghost-button" disabled={!activeRoom || !activeRoom.autoplay?.active} onClick={() => handleRoomAction("stop")} type="button">
               Stop
-            </button>
-            <button className="ghost-button" disabled={!activeSession} onClick={() => setTerminalOpen(true)} type="button">
-              Open Terminal
             </button>
           </div>
         </section>
@@ -515,48 +484,42 @@ export default function App() {
               ))}
             </div>
             {activeRoomActivity ? <div className="activity-banner">{activeRoomActivity}</div> : null}
-            <div className="member-strip">
-              {activeRoom?.members.map((member) => (
-                <button
-                  className="member-pill"
-                  key={member.sessionId}
-                  onClick={() => {
-                    setActiveRoomId(null);
-                    setActiveSessionId(member.sessionId);
-                    setTerminalOpen(true);
-                  }}
-                  type="button"
-                >
-                  <span>{member.displayName}</span>
-                  <small>{member.model}</small>
-                </button>
-              ))}
-            </div>
+            {activeRoom ? (
+              <div className="member-strip">
+                {activeRoom.members.map((member) => (
+                  <button
+                    className="member-pill"
+                    key={member.sessionId}
+                    onClick={() => {
+                      setActiveRoomId(null);
+                      setActiveSessionId(member.sessionId);
+                    }}
+                    type="button"
+                  >
+                    <span>{member.displayName}</span>
+                    <small>{member.model}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="message-feed">
             {activeRoom ? (
               activeEvents.map((event) => (
-                <article className={`message-card ${event.type}`} key={event.id}>
-                  <div className="message-meta">
-                    <div className="message-author">
-                      <strong>{event.author}</strong>
-                      <span>{event.model || event.type}</span>
-                    </div>
-                    <time>{formatTime(event.createdAt)}</time>
-                  </div>
-                  <pre>{event.content}</pre>
-                </article>
+                <MessageCard event={event} key={event.id} />
               ))
             ) : activeSession ? (
-              <div className="session-placeholder">
-                <p>Session selected.</p>
-                <span>Use the terminal drawer for the raw CLI interface, or send a direct message below.</span>
-              </div>
+              activeMessages.length ? activeMessages.map((message) => <MessageCard event={message} key={message.id} />) : (
+                <div className="session-placeholder">
+                  <p>Session selected.</p>
+                  <span>Send a direct message below to have this agent work with you.</span>
+                </div>
+              )
             ) : (
               <div className="session-placeholder">
                 <p>No active target.</p>
-                <span>Create a session, open a room, or launch the parenting template.</span>
+                <span>Create a session, open a room, or launch a template.</span>
               </div>
             )}
           </div>
@@ -567,11 +530,6 @@ export default function App() {
             <div>
               <h3>{activeRoom ? "Broadcast to Room" : activeSession ? "Direct Message" : "Message"}</h3>
               <p>{status}</p>
-            </div>
-            <div className="toolbar-actions">
-              <button className="ghost-button" disabled={!activeSession} onClick={handleInterrupt} type="button">
-                Ctrl+C
-              </button>
             </div>
           </div>
           <div className="composer-row">
@@ -593,27 +551,6 @@ export default function App() {
           </div>
         </section>
       </main>
-
-      <TerminalDrawer
-        activeSession={activeSession}
-        buffer={activeTerminalBuffer}
-        onClose={() => setTerminalOpen(false)}
-        onInput={(data) => {
-          const socket = socketRef.current;
-          if (socket?.readyState === WebSocket.OPEN && activeSession) {
-            socket.send(JSON.stringify({ type: "input", sessionId: activeSession.id, data }));
-          }
-        }}
-        onResize={(cols, rows) => {
-          if (!activeSession) return;
-          fetch(`/api/sessions/${activeSession.id}/resize`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cols, rows }),
-          }).catch(() => {});
-        }}
-        open={terminalOpen}
-      />
     </div>
   );
 }
@@ -642,77 +579,18 @@ function Field({ label, value, onChange, textarea = false, rows = 3 }) {
   );
 }
 
-function TerminalDrawer({ activeSession, buffer, open, onClose, onInput, onResize }) {
-  const hostRef = useRef(null);
-  const terminalRef = useRef(null);
-  const fitRef = useRef(null);
-  const lastBufferRef = useRef("");
-
-  useEffect(() => {
-    if (!open || !hostRef.current) return undefined;
-    const terminal = new Terminal({
-      convertEol: true,
-      cursorBlink: true,
-      fontFamily: '"IBM Plex Mono", monospace',
-      fontSize: 12,
-      theme: {
-        background: "#07111c",
-        foreground: "#dce8f8",
-        cursor: "#60dcff",
-        selectionBackground: "rgba(96, 220, 255, 0.18)",
-      },
-    });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(hostRef.current);
-    fitAddon.fit();
-    onResize(terminal.cols, terminal.rows);
-    terminal.onData(onInput);
-
-    terminalRef.current = terminal;
-    fitRef.current = fitAddon;
-    lastBufferRef.current = "";
-
-    const resize = () => {
-      fitAddon.fit();
-      onResize(terminal.cols, terminal.rows);
-    };
-    window.addEventListener("resize", resize);
-
-    return () => {
-      window.removeEventListener("resize", resize);
-      terminal.dispose();
-      terminalRef.current = null;
-      fitRef.current = null;
-      lastBufferRef.current = "";
-    };
-  }, [open, onInput, onResize]);
-
-  useEffect(() => {
-    if (!open || !terminalRef.current) return;
-    if (!buffer.startsWith(lastBufferRef.current)) {
-      terminalRef.current.reset();
-      terminalRef.current.write(buffer);
-    } else {
-      terminalRef.current.write(buffer.slice(lastBufferRef.current.length));
-    }
-    lastBufferRef.current = buffer;
-    fitRef.current?.fit();
-  }, [buffer, open]);
-
-  if (!open) return null;
-
+function MessageCard({ event }) {
   return (
-    <aside className="terminal-drawer">
-      <div className="terminal-toolbar">
-        <div>
-          <p className="eyebrow">Terminal</p>
-          <h3>{activeSession ? `${activeSession.title} terminal` : "No session selected"}</h3>
+    <article className={`message-card ${event.type}`} key={event.id}>
+      <div className="message-meta">
+        <div className="message-author">
+          <strong>{event.author}</strong>
+          <span>{event.model || event.type}</span>
         </div>
-        <button className="ghost-button" onClick={onClose} type="button">Close</button>
+        <time>{formatTime(event.createdAt)}</time>
       </div>
-      <div className="terminal-stage" ref={hostRef} />
-    </aside>
+      <pre>{event.content}</pre>
+    </article>
   );
 }
 

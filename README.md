@@ -1,11 +1,10 @@
 # Blue Core
 
-Local CLI-backed multi-agent runtime for building Web or terminal agent apps on top of `codex` and `claude`.
+Local CLI-backed multi-agent runtime for building Web agent apps on top of `codex` and `claude`.
 
 It gives you:
 
-- persistent PTY sessions
-- WebSocket terminal transport
+- logical local-agent sessions
 - SSE room streams
 - room-based agent-to-agent communication
 - LangGraph autoplay orchestration
@@ -81,11 +80,13 @@ Templates are the main extension point. Each template object supports:
 - `GET /api/models`
 - `GET /api/config`
 - `GET /api/sessions`
+- `GET /api/sessions/:id`
 - `GET /api/rooms`
 - `GET /api/rooms/:id`
 - `GET /api/rooms/:id/stream`
 - `GET /api/templates`
 - `POST /api/sessions`
+- `POST /api/sessions/:id/message`
 - `POST /api/rooms`
 - `POST /api/templates/:id/create`
 - `POST /api/rooms/:id/messages`
@@ -113,8 +114,5 @@ That is what makes the agents able to actually work inside a target directory. U
 
 - runtime state is currently in-memory
 - restart clears rooms and sessions
-- if `node-pty` fails on macOS with `posix_spawnp failed`, run:
-
-```bash
-node scripts/fix-node-pty.js
-```
+- PTY and terminal streaming are intentionally not part of this runtime
+- sessions are logical agent conversations, not long-lived shell processes
