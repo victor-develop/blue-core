@@ -107,6 +107,26 @@ interface Template {
   description: string;
 }
 
+const AGENT_TONES = [
+  { dot: '#ef4444', soft: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.32)' },
+  { dot: '#f97316', soft: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.32)' },
+  { dot: '#eab308', soft: 'rgba(234, 179, 8, 0.14)', border: 'rgba(234, 179, 8, 0.34)' },
+  { dot: '#22c55e', soft: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.32)' },
+  { dot: '#06b6d4', soft: 'rgba(6, 182, 212, 0.12)', border: 'rgba(6, 182, 212, 0.32)' },
+  { dot: '#3b82f6', soft: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.32)' },
+  { dot: '#8b5cf6', soft: 'rgba(139, 92, 246, 0.12)', border: 'rgba(139, 92, 246, 0.32)' },
+  { dot: '#ec4899', soft: 'rgba(236, 72, 153, 0.12)', border: 'rgba(236, 72, 153, 0.32)' },
+];
+
+function getAgentTone(seed: string) {
+  const value = String(seed || 'agent');
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return AGENT_TONES[hash % AGENT_TONES.length];
+}
+
 // --- Components ---
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -143,16 +163,34 @@ const TimelineItem = ({ item }: { item: Message | ProcessEvent | RoomEvent, key?
   const isSystem = item.type === 'system';
 
   if (isProcess) {
-    const p = item as ProcessEvent;
+    const p = item as ProcessEvent & RoomEvent;
+    const family = p.family || p.process?.family || 'status';
+    const phase = p.phase || p.process?.phase || 'updated';
+    const actor = p.author || p.process?.author || 'Agent';
+    const model = p.model || p.process?.model || '';
+    const tone = getAgentTone(actor);
     return (
-      <div className="process-event">
-        <div className="process-icon">
-          <ProcessIcon family={p.family} />
+      <div
+        className="process-event"
+        style={{
+          borderColor: tone.border,
+          background: `linear-gradient(180deg, ${tone.soft}, rgba(0, 0, 0, 0.02))`,
+        }}
+      >
+        <div className="process-icon" style={{ borderColor: tone.border, background: tone.soft }}>
+          <ProcessIcon family={family} />
         </div>
         <div className="process-content">
-          <div className="process-header">
-            <span className="process-title">{p.family.toUpperCase()} • {p.phase.toUpperCase()}</span>
+          <div className="process-meta">
+            <div className="process-actor-row">
+              <span className="process-actor-dot" style={{ background: tone.dot }} />
+              <span className="process-actor">{actor}</span>
+              {model ? <span className="process-model" style={{ borderColor: tone.border, background: tone.soft }}>{model}</span> : null}
+            </div>
             <span className="process-time">{new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          <div className="process-header">
+            <span className="process-title">{family.toUpperCase()} • {phase.toUpperCase()}</span>
           </div>
           <div className="process-body">{p.content}</div>
         </div>
@@ -170,14 +208,24 @@ const TimelineItem = ({ item }: { item: Message | ProcessEvent | RoomEvent, key?
     );
   }
 
+  const tone = isAgent ? getAgentTone(item.author) : null;
   return (
     <div className={`timeline-item ${isUser ? 'message-user' : 'message-agent'}`}>
       <div className="message-meta">
+        {isAgent && tone ? <span className="message-author-dot" style={{ background: tone.dot }} /> : null}
         <span className="message-author">{item.author}</span>
+        {isAgent && item.model ? (
+          <span className="message-model-tag" style={{ borderColor: tone?.border, background: tone?.soft }}>
+            {item.model}
+          </span>
+        ) : null}
         <span>•</span>
         <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
-      <div className="message-bubble">
+      <div
+        className="message-bubble"
+        style={isAgent && tone ? { borderColor: tone.border, boxShadow: `0 8px 24px ${tone.soft}` } : undefined}
+      >
         {item.content}
       </div>
     </div>
@@ -924,7 +972,7 @@ export default function App() {
             <div className="max-w-[800px] mx-auto w-full flex flex-wrap gap-2">
               {room.members.map(member => (
                 <div key={member.sessionId} className="px-3 py-2 rounded-full bg-white border border-border text-[12px] text-secondary flex items-center gap-2">
-                  <span className={`status-dot ${member.status === 'working' ? 'status-working' : member.status === 'error' ? 'status-error' : 'status-idle'}`} />
+                  <span className="status-dot" style={{ background: getAgentTone(member.displayName).dot }} />
                   <span className="font-medium text-primary">{member.displayName}</span>
                   <span>{member.model}</span>
                 </div>

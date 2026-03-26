@@ -165,10 +165,30 @@ body {
 .message-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
   color: var(--text-secondary);
   padding: 0 4px;
+}
+
+.message-author-dot,
+.process-actor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.message-model-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
 }
 
 .message-author {
@@ -234,9 +254,42 @@ body {
   flex: 1;
 }
 
-.process-header {
+.process-meta {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.process-actor-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.process-actor {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.process-model {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border);
+}
+
+.process-header {
+  display: flex;
   margin-bottom: 2px;
 }
 
