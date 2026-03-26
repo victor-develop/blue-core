@@ -376,6 +376,11 @@ button {
   border-color: rgba(244, 203, 114, 0.26);
 }
 
+.message-card.process {
+  border-color: rgba(109, 224, 164, 0.24);
+  background: rgba(10, 26, 20, 0.62);
+}
+
 .message-meta {
   display: flex;
   justify-content: space-between;

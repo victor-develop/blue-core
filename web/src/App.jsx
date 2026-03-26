@@ -11,6 +11,8 @@ export default function App() {
   const [roomEvents, setRoomEvents] = useState(new Map());
   const [roomActivity, setRoomActivity] = useState(new Map());
   const [sessionMessages, setSessionMessages] = useState(new Map());
+  const [sessionProcessEvents, setSessionProcessEvents] = useState(new Map());
+  const [sessionActivity, setSessionActivity] = useState(new Map());
   const [activeModel, setActiveModel] = useState("codex");
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [activeRoomId, setActiveRoomId] = useState(null);
@@ -33,6 +35,7 @@ export default function App() {
   );
   const activeEvents = activeRoom ? roomEvents.get(activeRoom.id) || EMPTY_EVENTS : EMPTY_EVENTS;
   const activeMessages = activeSession ? sessionMessages.get(activeSession.id) || EMPTY_MESSAGES : EMPTY_MESSAGES;
+  const activeProcessEvents = activeSession ? sessionProcessEvents.get(activeSession.id) || EMPTY_EVENTS : EMPTY_EVENTS;
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -151,8 +154,60 @@ export default function App() {
   }, [activeRoomId]);
 
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionId) return undefined;
+    let closed = false;
+
     loadSession(activeSessionId).catch((error) => setStatus(error.message));
+
+    const source = new EventSource(`/api/sessions/${activeSessionId}/stream`);
+    source.addEventListener("message", (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.session) {
+        setSessions((current) => upsertById(current, payload.session));
+      }
+      if (payload.message) {
+        setSessionMessages((current) => {
+          const next = new Map(current);
+          const existing = next.get(activeSessionId) || [];
+          next.set(activeSessionId, [...existing, payload.message].slice(-400));
+          return next;
+        });
+      }
+      if (payload.message?.type === "agent") {
+        setSessionActivity((current) => {
+          const next = new Map(current);
+          next.delete(activeSessionId);
+          return next;
+        });
+      }
+    });
+    source.addEventListener("process", (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.session) {
+        setSessions((current) => upsertById(current, payload.session));
+      }
+      if (payload.event) {
+        setSessionProcessEvents((current) => {
+          const next = new Map(current);
+          const existing = next.get(activeSessionId) || [];
+          next.set(activeSessionId, [...existing, payload.event].slice(-400));
+          return next;
+        });
+        setSessionActivity((current) => {
+          const next = new Map(current);
+          next.set(activeSessionId, payload.event.content || "Agent is working.");
+          return next;
+        });
+      }
+    });
+    source.onerror = () => {
+      if (!closed) setStatus("Session stream disconnected. Reloading the latest snapshot usually fixes it.");
+    };
+
+    return () => {
+      closed = true;
+      source.close();
+    };
   }, [activeSessionId]);
 
   const roomStats = activeRoom
@@ -164,6 +219,8 @@ export default function App() {
       ]
     : [];
   const activeRoomActivity = activeRoom ? roomActivity.get(activeRoom.id) || "" : "";
+  const activeSessionActivity = activeSession ? sessionActivity.get(activeSession.id) || "" : "";
+  const activeSessionEntries = activeSession ? mergeEntriesByCreatedAt(activeProcessEvents, activeMessages) : EMPTY_EVENTS;
 
   async function loadSession(sessionId) {
     const response = await fetch(`/api/sessions/${sessionId}`);
@@ -175,6 +232,11 @@ export default function App() {
     setSessionMessages((current) => {
       const next = new Map(current);
       next.set(sessionId, payload.messages || []);
+      return next;
+    });
+    setSessionProcessEvents((current) => {
+      const next = new Map(current);
+      next.set(sessionId, payload.processEvents || []);
       return next;
     });
   }
@@ -286,13 +348,12 @@ export default function App() {
         return;
       }
       setSessions((current) => upsertById(current, payload.session));
-      setSessionMessages((current) => {
+      setComposerValue("");
+      setSessionActivity((current) => {
         const next = new Map(current);
-        const existing = next.get(activeSessionId) || [];
-        next.set(activeSessionId, [...existing, ...(payload.messages || [])]);
+        next.set(activeSessionId, "Agent is working.");
         return next;
       });
-      setComposerValue("");
     }
   }
 
@@ -484,6 +545,7 @@ export default function App() {
               ))}
             </div>
             {activeRoomActivity ? <div className="activity-banner">{activeRoomActivity}</div> : null}
+            {!activeRoom && activeSessionActivity ? <div className="activity-banner">{activeSessionActivity}</div> : null}
             {activeRoom ? (
               <div className="member-strip">
                 {activeRoom.members.map((member) => (
@@ -510,7 +572,7 @@ export default function App() {
                 <MessageCard event={event} key={event.id} />
               ))
             ) : activeSession ? (
-              activeMessages.length ? activeMessages.map((message) => <MessageCard event={message} key={message.id} />) : (
+              activeSessionEntries.length ? activeSessionEntries.map((message) => <MessageCard event={message} key={message.id} />) : (
                 <div className="session-placeholder">
                   <p>Session selected.</p>
                   <span>Send a direct message below to have this agent work with you.</span>
@@ -604,6 +666,17 @@ function upsertById(list, item) {
 
 function upsertMany(list, items) {
   return items.reduce((current, item) => upsertById(current, item), list);
+}
+
+function mergeEntriesByCreatedAt(processEvents, messages) {
+  return [...processEvents, ...messages].sort((left, right) => {
+    const leftTime = new Date(left.createdAt || 0).getTime();
+    const rightTime = new Date(right.createdAt || 0).getTime();
+    if (leftTime === rightTime) {
+      return String(left.id || "").localeCompare(String(right.id || ""));
+    }
+    return leftTime - rightTime;
+  });
 }
 
 function formatTime(value) {
