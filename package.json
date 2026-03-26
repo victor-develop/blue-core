@@ -8,6 +8,7 @@
     "dev": "node server.js",
     "build:web": "vite build",
     "preview:web": "vite preview",
+    "judge:iteration": "node scripts/iteration-judge.mjs",
     "test": "echo \"No tests yet\""
   },
   "keywords": [
