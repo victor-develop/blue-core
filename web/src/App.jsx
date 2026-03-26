@@ -108,15 +108,19 @@ export default function App() {
     const source = new EventSource(`/api/rooms/${activeRoomId}/stream`);
     source.addEventListener("message", (event) => {
       const payload = JSON.parse(event.data);
-      setRoomActivity((current) => {
-        const next = new Map(current);
-        next.delete(activeRoomId);
-        return next;
-      });
       if (payload.room) {
         setRooms((current) => upsertById(current, payload.room));
       }
       if (payload.event) {
+        setRoomActivity((current) => {
+          const next = new Map(current);
+          if (payload.event.type === "process") {
+            next.set(activeRoomId, payload.event.content || "Agent is working.");
+          } else if (payload.event.type === "agent" || payload.event.type === "system") {
+            next.delete(activeRoomId);
+          }
+          return next;
+        });
         setRoomEvents((current) => {
           const next = new Map(current);
           const existing = next.get(activeRoomId) || [];
