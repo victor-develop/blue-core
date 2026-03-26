@@ -70,13 +70,15 @@ room 是协作单元，session 是参与者。
 
 ### 2.5 Agent 调用层
 
-[lib/cli-adapters.js](/Users/victorzhou/blue-core/lib/cli-adapters.js) 是框架和本地 CLI 之间的边界层。
+[lib/cli-adapters.js](/Users/victorzhou/blue-core/lib/cli-adapters.js) 是框架和本地 CLI 之间的边界层，而 [lib/cli-event-normalizer.js](/Users/victorzhou/blue-core/lib/cli-event-normalizer.js) 负责把各家 JSONL 输出抹平成统一的过程事件模型。
 
 职责：
 
 - 以非交互 JSON 模式调用 `codex`
-- 以非交互 prompt 模式调用 `claude`
-- 把输出归一化成纯文本
+- 以非交互 stream JSON 模式调用 `claude`
+- 可选地以 raw JSON 模式调用 `opencode`
+- 把原始 provider 事件归一化为统一抽象
+- 从归一化事件中提取最终 assistant 文本
 
 这也是移除 PTY 的关键设计点：框架只处理结构化调用结果，而不是处理 terminal 重绘噪音。
 

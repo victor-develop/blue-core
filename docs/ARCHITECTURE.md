@@ -70,13 +70,15 @@ Why SSE:
 
 ### 2.5 Agent Invocation Layer
 
-[`lib/cli-adapters.js`](/Users/victorzhou/blue-core/lib/cli-adapters.js) is the boundary between the framework and local CLIs.
+[`lib/cli-adapters.js`](/Users/victorzhou/blue-core/lib/cli-adapters.js) is the boundary between the framework and local CLIs, and [`lib/cli-event-normalizer.js`](/Users/victorzhou/blue-core/lib/cli-event-normalizer.js) flattens each provider's JSONL format into one process-event model.
 
 Responsibilities:
 
 - invoke `codex` in non-interactive JSON mode
-- invoke `claude` in non-interactive prompt mode
-- normalize output into plain text
+- invoke `claude` in non-interactive stream JSON mode
+- optionally invoke `opencode` in raw JSON mode
+- normalize raw provider events into a shared event abstraction
+- extract final assistant text from normalized events
 
 This is the key design choice behind removing PTY support: the framework only deals with structured invocation results, not terminal repaint noise.
 
