@@ -156,6 +156,33 @@ const ProcessIcon = ({ family }: { family: string }) => {
   }
 };
 
+function getProcessEmoji(family: string) {
+  switch (family) {
+    case 'session': return '🧭';
+    case 'turn': return '🔄';
+    case 'message': return '💬';
+    case 'tool': return '🛠';
+    case 'reasoning': return '🧠';
+    case 'plan': return '🗺';
+    case 'file': return '📄';
+    case 'status': return '📡';
+    case 'task': return '📦';
+    case 'hook': return '🪝';
+    case 'rate_limit': return '⏳';
+    case 'error': return '⚠';
+    default: return '✨';
+  }
+}
+
+function getProcessPhaseClass(phase: string) {
+  switch (phase) {
+    case 'started': return 'is-started';
+    case 'completed': return 'is-completed';
+    case 'failed': return 'is-failed';
+    default: return 'is-updated';
+  }
+}
+
 const TimelineItem = ({ item }: { item: Message | ProcessEvent | RoomEvent, key?: string }) => {
   const isProcess = item.type === 'process';
   const isUser = item.type === 'user';
@@ -169,9 +196,10 @@ const TimelineItem = ({ item }: { item: Message | ProcessEvent | RoomEvent, key?
     const actor = p.author || p.process?.author || 'Agent';
     const model = p.model || p.process?.model || '';
     const tone = getAgentTone(actor);
+    const emoji = getProcessEmoji(family);
     return (
       <div
-        className="process-event"
+        className={`process-event ${getProcessPhaseClass(phase)}`}
         style={{
           borderColor: tone.border,
           background: `linear-gradient(180deg, ${tone.soft}, rgba(0, 0, 0, 0.02))`,
@@ -189,10 +217,10 @@ const TimelineItem = ({ item }: { item: Message | ProcessEvent | RoomEvent, key?
             </div>
             <span className="process-time">{new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-          <div className="process-header">
-            <span className="process-title">{family.toUpperCase()} • {phase.toUpperCase()}</span>
+          <div className="process-body">
+            <span className="process-emoji" aria-hidden="true">{emoji}</span>
+            <span>{p.content}</span>
           </div>
-          <div className="process-body">{p.content}</div>
         </div>
       </div>
     );

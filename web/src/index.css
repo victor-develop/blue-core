@@ -288,26 +288,40 @@ body {
   border: 1px solid var(--border);
 }
 
-.process-header {
-  display: flex;
-  margin-bottom: 2px;
-}
-
-.process-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .process-time {
   font-size: 11px;
   color: var(--text-secondary);
 }
 
 .process-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+.process-emoji {
+  font-size: 15px;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.process-event.is-started .process-body {
+  color: #2563eb;
+}
+
+.process-event.is-completed .process-body {
+  color: #15803d;
+}
+
+.process-event.is-failed .process-body {
+  color: #b91c1c;
+}
+
+.process-event.is-updated .process-body {
+  color: var(--text-secondary);
 }
 
 /* Input Area */
